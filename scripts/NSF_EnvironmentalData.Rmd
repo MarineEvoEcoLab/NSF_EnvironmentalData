@@ -1,0 +1,123 @@
+---
+title: "Multiple Coastal Stressors - Environmental Data"
+author: "Gabriel Barrett"
+slug: "EnvironmentalData"
+date: "2022-22-08"
+author_email: "gabriel_barrett@uri.edu"
+author_github: "Gabriel-A-Barrett"
+description: "Environmental data retrieval and curation for mutliple coastal stressors NSF project"
+output: 
+  html_document:
+    self_contained: no
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(dataRetrieval)
+library(readxl)
+library(leaflet)
+library(viridis)
+source("bin/Rfunctions.R")
+
+#knit_hooks$set(plot=function(x, options) {
+#  paste0('<figure><img src="/',options$fig.path,options$label,
+#         "-", options$fig.cur,".",options$fig.ext,'" title = "',
+#         options$fig.cap, '" alt = "', options$alt.text,'" ></figure>')
+#})
+
+
+opts_chunk$set(
+    echo=TRUE,
+    eval=TRUE,
+    root.dir = "D:/Puritz_Lab/NSF/NSF_EnvironmentalData/",
+    base.dir = "D:/Puritz_Lab/NSF/NSF_EnvironmentalData/",
+    fig.path="assets/",
+    fig.cap="TODO",
+    alt.text="TODO",
+    fig.width=7,
+    fig.height=5,
+    class="",
+    message=FALSE,
+    warnings=FALSE
+)
+```
+
+# Buzzards Bay 
+
+Obtained ~19,000 records of Water Quality data from WHOI archives: https://darchive.mblwhoilibrary.org/handle/1912/25762
+
+```{r dataframe, echo=FALSE, eval=TRUE,warning=FALSE, fig.cap="**Table 1.** Buzzards Bay Water Quality Coalition example dataframe"}
+buz <- read.delim(file="../data/buzzards.tsv",sep="\t") %>% mutate(time_stamp = as.POSIXct(time_stamp,format = '%Y-%m-%d %H:%M:%S'))
+
+knitr::kable(head(buz %>% select(STN_ID,time_stamp,SAMPDEP_M,DO_MGL,DO_QC,SAL_FIELD,SAL_QC,SAMP_DATE,TIME,WQI_Area,EMBAYMENT,Town,LATITUDE,LONGITUDE,STAT_EQUIV)))
+```
+**Table 1.** Buzzards Bay Water Quality Coalition example dataframe
+
+Went on to exclude data based on quality control codes provided...
+
+```{r buzzardsbay, echo = FALSE, eval = TRUE, fig.cap = "**Table 2.** quality control codes excluded from dataset"}
+qc_df <- data.frame(
+    "code" = c(1,2,3,4,6,7,8,9,10,11,12),
+    "description" = c("centrigade recalculate from Fahrenheit","value needs to be reviewed for accuracy","value reviewed then confirmed, rerun, or revised","flagged as unusual value, with comments about possible reasons if known","substitute value with comment for details","data below method detection limit","value highly anomalous, although laboratory measurments were validated, sample may have been compromised during collection","value rejected","laboratory salinity substituded for missing field salinity","field salinity restored to original value for 1992-1995 for samples that had a correction factor applied at the time","time of D.O. collection too late for D.O. value to be used in buzzards bay coalition health index calculations"),
+    "include_exclude" = c("include","exclude","include","exclude","exclude","exclude","exclude","exclude","include","include","include"))
+
+knitr::kable(qc_df)
+```
+
+**Table 2.** quality control codes excluded from dataset
+
+```{r buzzardsbay_timeseries, echo = FALSE, eval = TRUE, fig.width=20, fig.height=4, fig.align = 'center', warning=FALSE, message=FALSE, fig.cap="**Fig. 1** Dissolved oxygen in mg/L across 4 sites w/in Buzzards Bay, demonstrating seasonal sampling", alt.text="capturing 4 sites with highest observation counts and DO taken as average across overlapping stations"}
+
+sites <- c("Wareham River Inner","New Bedford Harbor Inner","Westport River East Inner","Mattapoisett Harbor Inner")
+sub_buz <- buz %>% filter(WQI_Area %in% sites)
+
+EnvTimeSeriesPoints(data = sub_buz, x = time_stamp, y = DO_MGL, color = WQI_Area)
+```
+
+# Chesapeak Bay: "eyes on the bay"
+
+Obtained ~116,000 records of water quality data from "eyes on the bay" data query portal. Raw data was not subsequently curated for quality as was done prior to uploading on the website. Data was converted to wide format and subsetting to surface water samples. 
+
+```{r chesepeak bay df, echo = FALSE, eval = TRUE, messages=FALSE,warning=FALSE}
+ches <- read.table("../data/waterquality_do_temp_sal_ph_chesapeakbay_Jan1990_Aug2022.txt",sep="\t",header=T,
+                           nrow=length(count.fields("../data/waterquality_do_temp_sal_ph_chesapeakbay_Jan1990_Aug2022.txt")) - 1, na.strings = "NA", fill = TRUE) %>% 
+  left_join(.,read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/WaterQualityStationHUC8_ChesapeakebayDataHub.txt",sep="\t",header=TRUE),by="Station") %>% filter(Layer == "S ") %>%
+  
+  mutate(row=row_number(),
+         date_time=as.POSIXct(paste(SampleDate,SampleTime,sep="-"),format="%m/%d/%Y-%H:%M:%S")) %>%
+  
+  pivot_wider(.,names_from = Parameter, values_from = MeasureValue) %>% 
+  select(Station,date_time,DO,PH,SALINITY,TotalDepth,Latitude.x,Longitude.x,StationDescription)
+
+knitr::kable(head(ches))
+
+```
+
+```{r chesepeak bay time series, echo=FALSE, eval = TRUE, message=FALSE, warning=FALSE, fig.width=25, fig.height=4, fig.cap="**Fig.2** Dissolved oxygen in mg/L across across 4 sites",alt.text="capturing 4 sites with highest observation counts and DO taken as average across overlapping sites",fig.align='center'}
+
+sites <- c("CB5.1","LE1.4","CB3.3C","CB5.1W")
+
+sub_ches <- ches %>% filter(Station %in% sites)
+
+EnvTimeSeriesPoints(data = sub_ches, x = date_time, y = DO, color = StationDescription)
+```
+
+
+# National Water Information System (NWIS)
+
+```{r}
+
+
+```
+
+
+# Water Quality Portal (WQP)
+
+```{r}
+
+```
