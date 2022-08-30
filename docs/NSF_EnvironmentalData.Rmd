@@ -76,8 +76,7 @@ env <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/NSF_Environmenta
   distinct(stn_id,.keep_all = TRUE) %>% filter(n > 1)
 
 
-states <- c('MA','RI','CT','NY','NJ','MD','DE','VA','PA')
-discharge_permits <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/EF_NPDES.csv",sep=",") %>% filter(STATE_CODE %in% states)
+waste <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/wastewater_discarge_permits.tsv",sep="\t")
 
 leaflet(width="100%") %>% addTiles() %>% 
   # USGS
@@ -116,7 +115,7 @@ leaflet(width="100%") %>% addTiles() %>%
                "<br>Deployment: ", begin_date," to ", end_date,
                "<br>observations: ", n),
              clusterOptions = markerClusterOptions(), group = "Eyes On the Bay") %>%
-  addMarkers(data=discharge_permits,lng=~LONGITUDE,lat=~LATITUDE,
+  addMarkers(data=waste,lng=~LONGITUDE,lat=~LATITUDE,
              popup=~paste(
                "<br>PGM System ID: ", PGM_SYS_ID,
                "<br>Primary Name: ", PRIMARY_NAME,
@@ -312,7 +311,7 @@ curated_fairfield <- fairfield %>%
 
 ```
 
-```{r chesepeak bay df, echo = FALSE, eval = TRUE, messages=FALSE,warning=FALSE}
+```{r fairfield WQP Query df, echo = FALSE, eval = TRUE, messages=FALSE,warning=FALSE}
 head(fairfield) %>% kbl(caption = "Keep Your Eyes On the Bay") %>% kable_classic(full_width=F)
 ```
 
@@ -324,6 +323,10 @@ sub_fairfield <- curated_fairfield %>% filter(stn_id %in% fairfieldsites)
 EnvTimeSeriesPoints(data = sub_fairfield, x = time_stamp, y = DO, color = location)
 ```
 
+# Water Treatment Facilities
+
+obtained from epa [data portal](https://edg.epa.gov/metadata/catalog/search/resource/details.page?uuid=%7BD7F5EE9A-248F-43FA-85F4-CCFC1181BF25%7D). Points of National Pollutant Discharge Elimination System (NPDES) and Permit Compliance Systems (PCS) programs as reported in Integrated Compliance Information Systems (ICIS). This dataset is updated weekly. 
+
 ```{r Water Treatment Facilities, echo = FALSE, eval = TRUE, messages=FALSE,warning=FALSE}
-head(ches) %>% kbl(caption = "Keep Your Eyes On the Bay") %>% kable_classic(full_width=F)
+head(waste) %>% kbl(caption = "Wastewater Discharge Facilities & Sewers & Water Quality Control Facilties") %>% kable_classic(full_width=F)
 ```
