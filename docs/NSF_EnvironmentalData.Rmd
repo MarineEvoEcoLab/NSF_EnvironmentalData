@@ -189,7 +189,7 @@ qc_df %>% kbl(caption = "A Tale of Exclusion") %>% kable_classic(full_width=F)
 
 ### Time Series
 
-```{r buzzardsbay_timeseries, echo = FALSE, eval = TRUE, fig.width=20, fig.height=4, fig.align = 'center', warning=FALSE, message=FALSE, fig.cap="**Fig. 1** Dissolved oxygen in mg/L across 4 sites w/in Buzzards Bay, demonstrating seasonal sampling", alt.text="capturing 4 sites with highest observation counts and DO taken as average across overlapping stations"}
+```{r buzzardsbay_timeseries, echo = FALSE, eval = TRUE, fig.width=20, fig.height=10, fig.align = 'center', warning=FALSE, message=FALSE, fig.cap="**Fig. 1** Dissolved oxygen in mg/L across 4 sites w/in Buzzards Bay, demonstrating seasonal sampling", alt.text="capturing 4 sites with highest observation counts and DO taken as average across overlapping stations"}
 
 sites <- c("Wareham River Inner","New Bedford Harbor Inner","Westport River East Inner","Mattapoisett Harbor Inner")
 sub_buz <- buz %>% 
@@ -201,7 +201,7 @@ EnvTimeSeriesPoints(data = sub_buz, x = time_stamp, y = DO_MGL, color = WQI_Area
 
 # Chesapeak Bay: "eyes on the bay"
 
-Obtained ~116,000 records of water quality data from "Eyes on the Bay" data query portal. Raw data was not subsequently curated for quality as was done prior to uploading on the website. Data was converted to wide format and subsetting to surface water samples. 
+Water quality data from "Eyes on the Bay" data query portal. Data quality control was done prior to uploading on the eyes on the bay website. Data was converted to wide format and subsetted to surface water samples. 
 
 ```{r chesepeak bay curation, echo = TRUE, eval = TRUE, messages=FALSE,warning=FALSE}
 ches <- read.table("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/waterquality_do_temp_sal_ph_chesapeakbay_Jan1990_Aug2022.txt",
@@ -234,12 +234,12 @@ ches_curated <- ches %>%
 ```
 
 ```{r chesepeak bay df, echo = FALSE, eval = TRUE, messages=FALSE,warning=FALSE}
-head(ches) %>% kbl(caption = "Keep Your Eyes On the Bay") %>% kable_classic(full_width=F)
+head(ches) %>% kbl(caption = paste("Keep Your Eyes On the Bay (n=",nrow(ches_curated),")")) %>% kable_classic(full_width=F)
 ```
 
 ### Time Series
 
-```{r chesepeak bay time series, echo=FALSE, eval = TRUE, message=FALSE, warning=FALSE, fig.width=25, fig.height=4, fig.cap="**Fig.2** Dissolved oxygen in mg/L across across 4 sites",alt.text="capturing 4 sites with highest observation counts and DO taken as average across overlapping sites",fig.align='center'}
+```{r chesepeak bay time series, echo=FALSE, eval = TRUE, message=FALSE, warning=FALSE, fig.width=25, fig.height=10, fig.cap="**Fig.2** Dissolved oxygen in mg/L across across 4 sites",alt.text="capturing 4 sites with highest observation counts and DO taken as average across overlapping sites",fig.align='center'}
 
 sites <- c("CB5.1","LE1.4","CB3.3C","CB5.1W")
 
@@ -315,7 +315,7 @@ curated_fairfield <- fairfield %>%
 head(fairfield) %>% kbl(caption = "Keep Your Eyes On the Bay") %>% kable_classic(full_width=F)
 ```
 
-```{r fairfield WQP time series, echo=FALSE, eval = TRUE, message=FALSE, warning=FALSE, fig.width=25, fig.height=4, fig.cap="**Fig.2** Dissolved oxygen in mg/L across across 4 sites",alt.text="capturing 4 sites with highest observation counts and DO taken as average across overlapping sites",fig.align='center'}
+```{r fairfield WQP time series, echo=FALSE, eval = TRUE, message=FALSE, warning=FALSE, fig.width=25, fig.height=10, fig.cap="**Fig.2** Dissolved oxygen in mg/L across across 4 sites",alt.text="capturing 4 sites with highest observation counts and DO taken as average across overlapping sites",fig.align='center'}
 
 top <- curated_fairfield %>% group_by(stn_id) %>% summarise(n=n()) %>% arrange(desc(n)) %>% slice(1:4)
 fairfieldsites <- top$stn_id 
