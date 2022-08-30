@@ -16,12 +16,14 @@ editor_options:
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(knitr)
+library(kableExtra)
 library(dplyr)
 library(ggplot2)
 library(dataRetrieval)
 library(readxl)
 library(leaflet)
 library(viridis)
+library(readxl)
 source("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/scripts/bin/Rfunctions.R")
 
 #knit_hooks$set(plot=function(x, options) {
@@ -50,9 +52,9 @@ opts_chunk$set(
 
 # All Site Information
 
-leaflet interactive map is hosted by GitHub Pages: https://marineevoecolab.github.io/NSF_EnvironmentalData/
+leaflet interactive map
 
-```{r leaflet, echo=FALSE,eval=TRUE,warning=FALSE}
+```{r leaflet, echo=FALSE,eval=TRUE,warning=FALSE, fig.cap="Fig. 1 leaflet map showing site positions with popups containing site metadata"}
 
 env <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/NSF_EnvironmentalData.tsv",sep="\t") %>% 
   group_by(stn_id) %>%
@@ -71,15 +73,15 @@ env <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/NSF_Environmenta
     end_date=max(as.POSIXct(time_stamp, format='%Y-%m-%d %H:%M:%S')),
     n=n()
     ) %>%
-  distinct(stn_id,.keep_all = TRUE)
+  distinct(stn_id,.keep_all = TRUE) %>% filter(n > 1)
 
-WQP <- env %>% filter(coalition=="WQP")
-buzzards <- env %>% filter(coalition=="buzzards")
-chesapeak <- env %>% filter(coalition=="eyesonthebay")
+
+states <- c('MA','RI','CT','NY','NJ','MD','DE','VA','PA')
+discharge_permits <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/EF_NPDES.csv",sep=",") %>% filter(STATE_CODE %in% states)
 
 leaflet(width="100%") %>% addTiles() %>% 
   # USGS
-  addMarkers(data = WQP, lng = ~long, lat = ~lat,
+  addMarkers(data = env %>% filter(coalition=="WQP"), lng = ~long, lat = ~lat,
              popup=~paste(
               "<br>Site Code: ", stn_id,
               "<br>Location: ", location,
@@ -91,7 +93,7 @@ leaflet(width="100%") %>% addTiles() %>%
               "<br>observations: ", n),
              clusterOptions = markerClusterOptions(), group = "WQP") %>%
   # buzzards
-  addMarkers(data = buzzards, lng = ~long, lat = ~lat,
+  addMarkers(data = env %>% filter(coalition=="buzzards"), lng = ~long, lat = ~lat,
              popup=~paste(
                "<br>Site Code: ", stn_id,
                "<br>Location: ", location,
@@ -103,31 +105,74 @@ leaflet(width="100%") %>% addTiles() %>%
                "<br>observations: ", n),
              clusterOptions = markerClusterOptions(), group = "Buzzards Bay Coalition") %>%
   # Cheseapeak
-  addMarkers(data = chesapeak, lng = ~long, lat = ~lat,
+  addMarkers(data = env %>% filter(coalition=="eyesonthebay"), lng = ~long, lat = ~lat,
              popup=~paste(
-               "<br>Site Code:", stn_id,
-               "<br>Location:", location,
-               "<br>Mean Temperature:",avg_temp,
-               "<br>Mean Salinity:", avg_sal,
-               "<br>Mean DO:", avg_do,
-               "<br>Mean pH:", avg_ph,
-               "<br>Deployment:", begin_date,"to", end_date,
-               "<br>observations:", n),
+               "<br>Site Code: ", stn_id,
+               "<br>Location: ", location,
+               "<br>Mean Temperature: ",avg_temp,
+               "<br>Mean Salinity: ", avg_sal,
+               "<br>Mean DO: ", avg_do,
+               "<br>Mean pH: ", avg_ph,
+               "<br>Deployment: ", begin_date," to ", end_date,
+               "<br>observations: ", n),
              clusterOptions = markerClusterOptions(), group = "Eyes On the Bay") %>%
-  addLayersControl(overlayGroups = c("WQP","Buzzards Bay Coalition","Eyes On the Bay"),
-                   options= layersControlOptions(collapsed = FALSE))
+  addMarkers(data=discharge_permits,lng=~LONGITUDE,lat=~LATITUDE,
+             popup=~paste(
+               "<br>PGM System ID: ", PGM_SYS_ID,
+               "<br>Primary Name: ", PRIMARY_NAME,
+               "<br>Address: ", LOCATION_ADDRESS,
+               "<br>More Information: <a href = ",FACILITY_URL,"> Link </a>"),
+             clusterOptions = markerClusterOptions(), group = "Water Discharge Facilities") %>% 
+  addLayersControl(overlayGroups = c("WQP","Buzzards Bay Coalition","Eyes On the Bay","Water Discharge Facilities"),
+                   options= layersControlOptions(collapsed = FALSE)) %>% hideGroup("Water Discharge Facilities")
 
 ```
 
-# Buzzards Bay 
+# Buzzards Bay Water Quality Coalition
 
-Obtained ~19,000 records of Water Quality data from WHOI archives: https://darchive.mblwhoilibrary.org/handle/1912/25762
+Water Quality data based Buzzards Bay Water Quality Coalition is placed with WHOI archives: https://darchive.mblwhoilibrary.org/handle/1912/25762
+
+```{r buzzards curation, echo=TRUE, eval=TRUE,warning=FALSE}
+
+qc_exclude <- c(2,4,6,7,8,9)
+
+buz <- read_excel("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/bbcdata1992to2020-ver07May2021.xlsx",sheet=2) %>% 
+  
+  left_join(.,read_excel("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/bbcdata1992to2020-ver07May2021.xlsx",sheet = 6,
+                         col_names = T,skip=1),by="STN_ID") %>% 
+  
+  filter(
+    !(TEMP_QC %in% qc_exclude),
+    !(SAL_QC %in% qc_exclude),
+    !(DO_QC %in% qc_exclude),
+    !(PH_QC %in% qc_exclude),
+    !(TIME_QC %in% qc_exclude),
+    !(is.na(STN_ID))) %>%
+    
+  mutate(
+    time = format(as.POSIXct(TIME, format='%Y-%m-%d %H:%M:%S'),format='%H:%M:%S'),
+    time_stamp = as.POSIXct(paste(SAMP_DATE,time,sep=" "),format = '%Y-%m-%d %H:%M:%S'),
+    coalition="buzzards")
+
+# This step transforms datasets so that they are able to be rbinded 
+buz_curated <- buz %>%
+  select(stn_id=STN_ID,
+         location=WQI_Area,
+         town=Town,
+         TEMP=TEMP_C,
+         DO=DO_MGL,
+         PH=PH,
+         SAL=SAL_FIELD,
+         depth=TOTDEP_M,
+         lat=LATITUDE,
+         long=LONGITUDE,
+         coalition,time_stamp)
+```
 
 ```{r dataframe, echo=FALSE, eval=TRUE,warning=FALSE, fig.cap="**Table 1.** Buzzards Bay Water Quality Coalition example dataframe"}
-buz <- read.delim(file="D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/buzzards.tsv",sep="\t") %>% mutate(time_stamp = as.POSIXct(time_stamp,format = '%Y-%m-%d %H:%M:%S'))
-
-knitr::kable(head(buz %>% select(STN_ID,time_stamp,SAMPDEP_M,DO_MGL,DO_QC,SAL_FIELD,SAL_QC,SAMP_DATE,TIME,WQI_Area,EMBAYMENT,Town,LATITUDE,LONGITUDE,STAT_EQUIV)))
+head(buz) %>% kbl(caption = paste("Buzzards Bay Coalition (n = ",nrow(buz),")")) %>% kable_classic(full_width=T)
 ```
+
 **Table 1.** Buzzards Bay Water Quality Coalition example dataframe
 
 Went on to exclude data based on quality control codes provided...
@@ -138,37 +183,62 @@ qc_df <- data.frame(
     "description" = c("centrigade recalculate from Fahrenheit","value needs to be reviewed for accuracy","value reviewed then confirmed, rerun, or revised","flagged as unusual value, with comments about possible reasons if known","substitute value with comment for details","data below method detection limit","value highly anomalous, although laboratory measurments were validated, sample may have been compromised during collection","value rejected","laboratory salinity substituded for missing field salinity","field salinity restored to original value for 1992-1995 for samples that had a correction factor applied at the time","time of D.O. collection too late for D.O. value to be used in buzzards bay coalition health index calculations"),
     "include_exclude" = c("include","exclude","include","exclude","exclude","exclude","exclude","exclude","include","include","include"))
 
-knitr::kable(qc_df)
+qc_df %>% kbl(caption = "A Tale of Exclusion") %>% kable_classic(full_width=F)
 ```
 
 **Table 2.** quality control codes excluded from dataset
 
+### Time Series
+
 ```{r buzzardsbay_timeseries, echo = FALSE, eval = TRUE, fig.width=20, fig.height=4, fig.align = 'center', warning=FALSE, message=FALSE, fig.cap="**Fig. 1** Dissolved oxygen in mg/L across 4 sites w/in Buzzards Bay, demonstrating seasonal sampling", alt.text="capturing 4 sites with highest observation counts and DO taken as average across overlapping stations"}
 
 sites <- c("Wareham River Inner","New Bedford Harbor Inner","Westport River East Inner","Mattapoisett Harbor Inner")
-sub_buz <- buz %>% filter(WQI_Area %in% sites)
+sub_buz <- buz %>% 
+  select(WQI_Area, DO_MGL, time_stamp) %>% 
+  filter(WQI_Area %in% sites)
 
 EnvTimeSeriesPoints(data = sub_buz, x = time_stamp, y = DO_MGL, color = WQI_Area)
 ```
 
 # Chesapeak Bay: "eyes on the bay"
 
-Obtained ~116,000 records of water quality data from "eyes on the bay" data query portal. Raw data was not subsequently curated for quality as was done prior to uploading on the website. Data was converted to wide format and subsetting to surface water samples. 
+Obtained ~116,000 records of water quality data from "Eyes on the Bay" data query portal. Raw data was not subsequently curated for quality as was done prior to uploading on the website. Data was converted to wide format and subsetting to surface water samples. 
 
-```{r chesepeak bay df, echo = FALSE, eval = TRUE, messages=FALSE,warning=FALSE}
-ches <- read.table("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/waterquality_do_temp_sal_ph_chesapeakbay_Jan1990_Aug2022.txt",sep="\t",header=T,
-                           nrow=length(count.fields("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/waterquality_do_temp_sal_ph_chesapeakbay_Jan1990_Aug2022.txt")) - 1, na.strings = "NA", fill = TRUE) %>% 
-  left_join(.,read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/WaterQualityStationHUC8_ChesapeakebayDataHub.txt",sep="\t",header=TRUE),by="Station") %>% filter(Layer == "S ") %>%
+```{r chesepeak bay curation, echo = TRUE, eval = TRUE, messages=FALSE,warning=FALSE}
+ches <- read.table("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/waterquality_do_temp_sal_ph_chesapeakbay_Jan1990_Aug2022.txt",
+                   sep="\t",header=T,
+                   nrow=length(count.fields("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/waterquality_do_temp_sal_ph_chesapeakbay_Jan1990_Aug2022.txt")) - 1, 
+                   na.strings = "NA", fill = TRUE) %>% 
+  
+  left_join(.,read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/WaterQualityStationHUC8_ChesapeakebayDataHub.txt",
+                         sep="\t",header=TRUE), by="Station") %>% 
+  filter(Layer == "S ") %>%
   
   mutate(row=row_number(),
-         date_time=as.POSIXct(paste(SampleDate,SampleTime,sep="-"),format="%m/%d/%Y-%H:%M:%S")) %>%
+         time_stamp=as.POSIXct(paste(SampleDate,SampleTime,sep=" "),format="%m/%d/%Y %H:%M:%S"),
+         coalition="eyesonthebay") %>%
   
-  pivot_wider(.,names_from = Parameter, values_from = MeasureValue) %>% 
-  select(Station,date_time,DO,PH,SALINITY,TotalDepth,Latitude.x,Longitude.x,StationDescription)
+  pivot_wider(.,names_from = Parameter, values_from = MeasureValue) 
 
-knitr::kable(head(ches))
 
+ches_curated <- ches %>% 
+  select(stn_id=Station,
+         location=StationDescription,
+         town=CountyCity,
+         TEMP=WTEMP,
+         DO,
+         PH,
+         SAL=SALINITY,
+         depth=TotalDepth,
+         lat=Latitude.x,long=Longitude.x,
+         coalition,time_stamp)
 ```
+
+```{r chesepeak bay df, echo = FALSE, eval = TRUE, messages=FALSE,warning=FALSE}
+head(ches) %>% kbl(caption = "Keep Your Eyes On the Bay") %>% kable_classic(full_width=F)
+```
+
+### Time Series
 
 ```{r chesepeak bay time series, echo=FALSE, eval = TRUE, message=FALSE, warning=FALSE, fig.width=25, fig.height=4, fig.cap="**Fig.2** Dissolved oxygen in mg/L across across 4 sites",alt.text="capturing 4 sites with highest observation counts and DO taken as average across overlapping sites",fig.align='center'}
 
@@ -176,12 +246,84 @@ sites <- c("CB5.1","LE1.4","CB3.3C","CB5.1W")
 
 sub_ches <- ches %>% filter(Station %in% sites)
 
-EnvTimeSeriesPoints(data = sub_ches, x = date_time, y = DO, color = StationDescription)
+EnvTimeSeriesPoints(data = sub_ches, x = time_stamp, y = DO, color = StationDescription)
 ```
 
 
 # Water Quality Portal (WQP)
 
-```{r}
+Data was queryed via https://www.waterqualitydata.us/ 
 
+Search was narrowed based on state, county, site type == "estuary", sample media == "Water (NWIS,STEWARDS,STORET)", characteristic group == "Inorganic, Minor, Metals", and data profiles == "Sample Results (narrow)"
+
+```{r Water Quality Portal curation, echo = TRUE, eval = TRUE, messages=FALSE,warning=FALSE}
+
+variables <- c("Dissolved oxygen (DO)", "Oxygen", "Temperature, water", 'Salinity', "pH") # Measurments We Want
+
+fairfield <- read.csv("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/WQP_CT_fairfield.csv",na.strings=c("","NA")) %>% 
+  filter(CharacteristicName %in% variables) %>% 
+  mutate(time_stamp=as.POSIXct(ActivityStartDate,format="%Y-%M-%d"))
+
+sites <- fairfield %>% 
+  distinct(MonitoringLocationIdentifier,.keep_all = TRUE) %>%
+  group_by(MonitoringLocationIdentifier) %>%
+  dplyr::mutate(end_date=max(time_stamp)) %>% 
+  #dplyr::filter(end_date >= "2015-01-01") %>% 
+  dplyr::select(site=MonitoringLocationIdentifier,end_date)
+
+siteLoadedList <- lapply(sites$site,function(i){whatWQPdata(siteid=i)}) # One line information pertaining to sites activity, location, ect.
+sitemeta <- do.call(rbind,siteLoadedList) # combine into one df
+
+# Place Curated datasets within subsets list
+
+curated_fairfield <- fairfield %>% 
+  dplyr::group_by(MonitoringLocationIdentifier) %>%
+  dplyr::mutate(row=dplyr::row_number(),
+          result = as.numeric(ResultMeasureValue),
+          datatype = gsub("([A-Za-z]+).*", "\\1",CharacteristicName),
+         
+         time_stamp=as.POSIXct(ActivityStartDate,format="%Y-%M-%d")) %>%
+  
+  # Remove unwanted units 
+  filter(!(ResultMeasure.MeasureUnitCode == "ppth" || ResultMeasure.MeasureUnitCode == "deg F" || is.na(ResultMeasure.MeasureUnitCode) == TRUE || ResultMeasure.MeasureUnitCode == "%" || ResultMeasure.MeasureUnitCode == "ppm")) %>%
+  
+  # Must subset or else pivot wider does not fully combine Results into one row but multiple in different columns
+  select(MonitoringLocationIdentifier,datatype,time_stamp,result) %>%
+  
+  pivot_wider(.,names_from="datatype",values_from="result", values_fn = ~mean(.x, na.rm = TRUE)) %>% 
+  
+  # Get meta information
+  left_join(.,sitemeta,by="MonitoringLocationIdentifier") %>%
+  
+  # Final DataFrame Structure
+  summarise(
+    stn_id=MonitoringLocationIdentifier,
+    location=MonitoringLocationName,
+    town=CountyName,
+    TEMP=as.numeric(Temperature),
+    DO=as.numeric(Dissolved),
+    PH=as.numeric(pH),
+    SAL=as.numeric(Salinity),
+    depth=NA,
+    lat=lat,
+    long=lon,
+    coalition="WQP",
+    time_stamp=time_stamp)
+
+```
+
+```{r chesepeak bay df, echo = FALSE, eval = TRUE, messages=FALSE,warning=FALSE}
+head(fairfield) %>% kbl(caption = "Keep Your Eyes On the Bay") %>% kable_classic(full_width=F)
+```
+
+```{r fairfield WQP time series, echo=FALSE, eval = TRUE, message=FALSE, warning=FALSE, fig.width=25, fig.height=4, fig.cap="**Fig.2** Dissolved oxygen in mg/L across across 4 sites",alt.text="capturing 4 sites with highest observation counts and DO taken as average across overlapping sites",fig.align='center'}
+
+top <- curated_fairfield %>% group_by(stn_id) %>% summarise(n=n()) %>% arrange(desc(n)) %>% slice(1:4)
+fairfieldsites <- top$stn_id 
+sub_fairfield <- curated_fairfield %>% filter(stn_id %in% fairfieldsites)
+EnvTimeSeriesPoints(data = sub_fairfield, x = time_stamp, y = DO, color = location)
+```
+
+```{r Water Treatment Facilities, echo = FALSE, eval = TRUE, messages=FALSE,warning=FALSE}
+head(ches) %>% kbl(caption = "Keep Your Eyes On the Bay") %>% kable_classic(full_width=F)
 ```
