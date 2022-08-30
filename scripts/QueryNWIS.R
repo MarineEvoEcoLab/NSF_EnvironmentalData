@@ -1,76 +1,161 @@
 library(dataRetrieval) # https://pubs.er.usgs.gov/publication/tm4A10
 library(dplyr)
+library(tidyr)
+library(readxl)
+# set your working directory to data within the home dir.
+#setwd("/home/gbarrett/NSF/NSF_EnvironmentalData/data") # Personal path to dir. 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# Sensor Codes
-params_cds <- c("00003", "00010", "00400","00480", "00300", "90860")
+# Water Quality Portal
 
-params_cds_key <- readNWISpCode(c("00010","00004","00480", "00003","00400", "00300", "99975", "99976", "99979", "99980","01335"))
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#setwd("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/")
+#setwd("/home/gbarrett/NSF/NSF_EnvironmentalData/data")
+WQP_files <- list.files(pattern = 'WQP') # $ indicates end of string
 
-# WHAT NWIS data is available
-# HUC-8
 
-HUC8_codes <- c("01090002", "02030203", "01100003", "01080205", "01100004", "01100005", "01100006", "02030101", "02040204", "02030102", "01090004", "02080101", "02040207", "02040205", "02040202", "02040206", "02080101", "02060001", "02080111", "02080110", "02060005", "02060002", "02060003", "02060004", "02060006", "02070011", "02080104", "02080102", "02080108", "02080206", "02080107", "02070011", "02070010")
+subsets <- list() # stache curated datasets
+variables <- c("Dissolved oxygen (DO)", "Oxygen", "Temperature, water", 'Salinity', "pH") # Measurments We Want
 
-NWIS_list <- list()
-i <- 1
-for (HUC8 in HUC8_codes) {
+for (WQP in c(1:length(WQP_files))) {
   
-  whatNWISdf <- whatNWISdata(huc = HUC8, service=c("uv","dv"), statCd="00003",
-                             parameterCd=params_cds) %>% 
-    select(site_no,station_nm,data_type_cd,begin_date,end_date,count_nu,parm_cd,dec_lat_va,dec_long_va) %>% 
-    mutate(begin_date=as.POSIXct(begin_date,format="%Y-%M-%d"),
-           end_date=as.POSIXct(end_date,format="%Y-%M-%d")) %>% 
-    # Get Human Readable format for sensor codes used in leaflet vis.
-    left_join(.,params_cds_key,by=c("parm_cd"="parameter_cd"))  %>% 
-    # Convert to wide format
-    group_by(site_no, .drop=FALSE) %>% 
-    mutate(sensor = paste(srsname,collapse=", ")) %>% 
-    distinct(site_no,.keep_all=TRUE)
+  df <- read.csv(WQP_files[WQP],na.strings=c("","NA")) %>% 
+    filter(CharacteristicName %in% variables) %>% 
+    mutate(time_stamp=as.POSIXct(ActivityStartDate,format="%Y-%M-%d"))
   
-  NWIS_list[[i]] <- whatNWISdf 
+  sites <- df %>% 
+    distinct(MonitoringLocationIdentifier,.keep_all = TRUE) %>%
+    group_by(MonitoringLocationIdentifier) %>%
+    dplyr::mutate(end_date=max(time_stamp)) %>% 
+    #dplyr::filter(end_date >= "2015-01-01") %>% 
+    dplyr::select(site=MonitoringLocationIdentifier,end_date)
   
-  i <- i + 1
+  siteLoadedList <- lapply(sites$site,function(i){whatWQPdata(siteid=i)}) # One line information pertaining to sites activity, location, ect.
+  sitemeta <- do.call(rbind,siteLoadedList) # combine into one df
+  
+  # Place Curated datasets within subsets list
+  
+  subsets[[WQP]] <- df %>% 
+    dplyr::group_by(MonitoringLocationIdentifier) %>%
+    dplyr::mutate(row=dplyr::row_number(),
+                  result = as.numeric(ResultMeasureValue),
+                  datatype = gsub("([A-Za-z]+).*", "\\1",CharacteristicName),
+                  
+                  time_stamp=as.POSIXct(ActivityStartDate,format="%Y-%M-%d")) %>%
+    
+    # Remove unwanted units 
+    filter(!(ResultMeasure.MeasureUnitCode == "ppth" || ResultMeasure.MeasureUnitCode == "deg F" || is.na(ResultMeasure.MeasureUnitCode) == TRUE || ResultMeasure.MeasureUnitCode == "%" || ResultMeasure.MeasureUnitCode == "ppm")) %>%
+    
+    # Must subset or else pivot wider does not fully combine Results into one row but multiple in different columns
+    select(MonitoringLocationIdentifier,datatype,time_stamp,result) %>%
+    
+    pivot_wider(.,names_from="datatype",values_from="result", values_fn = ~mean(.x, na.rm = TRUE)) %>% 
+    
+    # Get meta information
+    left_join(.,sitemeta,by="MonitoringLocationIdentifier") %>%
+    
+    # Final DataFrame Structure
+    summarise(
+      stn_id=MonitoringLocationIdentifier,
+      location=MonitoringLocationName,
+      town=CountyName,
+      TEMP=as.numeric(Temperature),
+      DO=as.numeric(Dissolved),
+      PH=as.numeric(pH),
+      SAL=as.numeric(Salinity),
+      depth=NA,
+      lat=lat,
+      long=lon,
+      coalition="WQP",
+      time_stamp=time_stamp)
+  
 }
 
-NWIS_availdata <- do.call(rbind, NWIS_list)
+combine_cur_WQP <- do.call(rbind,subsets)
 
-NWIS_availdata_filtered <- NWIS_availdata %>% filter(sensor == "Temperature, water, Temperature, water, Oxygen, pH" || sensor == "Temperature, water, Oxygen, pH")
+object_size(combine_WQP)
 
-NWISuv_list <- list()
-i <- 1
-for (site in NWIS_availdata_filtered$site_no){
+rlimit_all()
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-  NWISuv <- readNWISuv(site, parameterCd=params_cds,startDate = "1992-01-01",endDate = "2020-01-01")
+# Buzzards Bay
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+buzzards_datapoints <- read_excel("bbcdata1992to2020-ver07May2021.xlsx",sheet = 2)
+buzzardsbay_positions <- read_excel("bbcdata1992to2020-ver07May2021.xlsx",sheet = 6,col_names = T,skip=1)
+
+qc_exclude <- c(2,4,6,7,8,9)
+
+buz <- buzzards_datapoints %>% 
+  # Removing records w/ QC codes
+  filter(
+    !(TEMP_QC %in% qc_exclude),
+    !(SAL_QC %in% qc_exclude),
+    !(DO_QC %in% qc_exclude),
+    !(PH_QC %in% qc_exclude),
+    !(is.na(STN_ID))) %>% 
+  # GET Positions of Stations
+  left_join(.,buzzardsbay_positions,by="STN_ID") %>% 
   
-  NWISuv_list[[i]] <- NWISuv
+  mutate(
+    time = format(as.POSIXct(TIME, format='%Y-%m-%d %H:%M:%S'),format='%H:%M:%S'),
+    time_stamp = as.POSIXct(paste(SAMP_DATE,time,sep=" "),format = '%Y-%m-%d %H:%M:%S'),
+    coalition="buzzards") 
+
+
+buz_curated <- buz %>%
+  select(stn_id=STN_ID,location=WQI_Area,town=Town,TEMP=TEMP_C,DO=DO_MGL,PH=PH,SAL=SAL_FIELD,depth=TOTDEP_M,lat=LATITUDE,long=LONGITUDE,coalition,time_stamp)
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Eyes on The Bay
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+ches <- read.table("waterquality_do_temp_sal_ph_chesapeakbay_Jan1990_Aug2022.txt",sep="\t",header=T,
+                   nrow=length(count.fields("waterquality_do_temp_sal_ph_chesapeakbay_Jan1990_Aug2022.txt")) - 1, na.strings = "NA", fill = TRUE) %>% 
+  left_join(.,read.delim("WaterQualityStationHUC8_ChesapeakebayDataHub.txt",sep="\t",header=TRUE),by="Station") %>% filter(Layer == "S ") %>%
   
-  i <- i + 1
-}
-
-do.call(rbind,NWISuv_list)
-
-
-
-# What WQP data is available
-statecodes <- c("US:44", "US:25","US:09","US:34","US:10","US:24")
-
-WQP_list <- list()
-i <- 1
-for (statecode in statecodes) {
+  mutate(row=row_number(),
+         time_stamp=as.POSIXct(paste(SampleDate,SampleTime,sep=" "),format="%m/%d/%Y %H:%M:%S"),
+         coalition="eyesonthebay") %>%
   
-  state <- gsub('US:','',statecode)
-  
-  whatWQPdf <- whatWQPdata(statecode = statecode, siteType = 'Estuary', parameterCd=params_cds)
-  
-  WQP_list[[i]] <- whatWQPdf
-  
-  i <- i + 1
-  
-}
+  pivot_wider(.,names_from = Parameter, values_from = MeasureValue) 
 
-WQP_availdata <- do.call(rbind, WQP_list)
 
-WQP_fulldata <- readWQPdata(siteNumbers = WQP_availdata$MonitoringLocationIdentifier, parameterCd=params_cds)
+ches_curated <- ches %>% 
+  select(stn_id=Station,location=StationDescription,town=CountyCity,TEMP=WTEMP,DO,PH,SAL=SALINITY,depth=TotalDepth,lat=Latitude.x,long=Longitude.x,coalition,time_stamp)
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Combined DataFrame
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+EnvData <- rbind(combine_cur_WQP,ches_curated,buz_curated)
+
+write.table(x = EnvData, file="NSF_EnvironmentalData.tsv",quote = FALSE,sep = "\t",row.names = FALSE,col.names = TRUE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
