@@ -82,7 +82,7 @@ combine_cur_WQP <- do.call(rbind,subsets)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-buzzards_datapoints <- read_excel("bbcdata1992to2020-ver07May2021.xlsx",sheet = 2)
+buzzards_datapoints <- read.csv("bbcdata1992to2020-ver07May2021.csv")
 buzzardsbay_positions <- read_excel("bbcdata1992to2020-ver07May2021.xlsx",sheet = 6,col_names = T,skip=1)
 
 qc_exclude <- c(2,4,6,7,8,9)
@@ -105,7 +105,18 @@ buz <- buzzards_datapoints %>%
 
 
 buz_curated <- buz %>%
-  select(stn_id=STN_ID,location=WQI_Area,town=Town,TEMP=TEMP_C,DO=DO_MGL,PH=PH,SAL=SAL_FIELD,depth=TOTDEP_M,lat=LATITUDE,long=LONGITUDE,coalition,time_stamp)
+  select(stn_id=STN_ID,
+         location=WQI_Area,
+         town=Town,
+         TEMP=TEMP_C,
+         DO=DO_MGL,
+         PH=PH,
+         SAL=SAL_FIELD,
+         depth=TOTDEP_M,
+         lat=LATITUDE,
+         long=LONGITUDE,
+         coalition,
+         time_stamp)
 
 write.table(x=buz_curated,file="buzzards.tsv",sep="\t",quote=FALSE,row.names=FALSE,col.names=TRUE)
 
@@ -128,9 +139,72 @@ ches <- read.table("waterquality_do_temp_sal_ph_chesapeakbay_Jan1990_Aug2022.txt
 
 
 ches_curated <- ches %>% 
-  select(stn_id=Station,location=StationDescription,town=CountyCity,TEMP=WTEMP,DO,PH,SAL=SALINITY,depth=TotalDepth,lat=Latitude.x,long=Longitude.x,coalition,time_stamp)
+  select(stn_id=Station,
+         location=StationDescription,
+         town=CountyCity,
+         TEMP=WTEMP,
+         DO,
+         PH,
+         SAL=SALINITY,
+         depth=TotalDepth,
+         lat=Latitude.x,
+         long=Longitude.x,
+         coalition,
+         time_stamp)
 
 write.table(x=ches_curated, file="eyesonthebay.tsv",sep="\t",row.names = FALSE,col.names = TRUE)
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# RI DOH
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ri_parametercodes <- read_xlsx("RIDOH_Supporting_Files.xlsx",sheet=2) %>% 
+  mutate(ParameterName = gsub("\\ -.*","",ParameterName)) 
+
+ri_sites <- read_xlsx("RIDOH_Supporting_Files.xlsx",sheet=5)
+
+ridoh_curated <- read.delim("RIDOH_1988_2020.csv",sep = ',') %>% # description - code; removing description
+  
+  mutate(parameter_code = gsub(".* - ","",Parameter..),
+         date = mdy(Date.of.Sample),
+         time = hms(Time), # Some strings are missing time, only evaluated based date and avg across time for a given day
+         # time_stamp = mdy_hms(paste0(Date.of.Sample," ",Time)),
+         measured_value = as.numeric(Concentration),
+         id = row_number()) %>% 
+  
+  filter(parameter_code %in% c("00300","00400","00480","00011"), # dissolved oxygen = 00300, pH = 00400, salinity = 00480, temperature = 00011
+         !(Qualifier.Code %in% c("N","U","I","V"))) %>%
+  
+  group_by(date, WW.ID, parameter_code) %>% # pooled different depths and samples from the same day
+  
+  summarise(avg_measuredvalue = mean(Concentration,na.rm=TRUE)) %>% # Took the average across these avg. depths and samples taken that day
+  
+  pivot_wider(names_from=parameter_code, values_from = avg_measuredvalue, names_prefix = "env_") %>% 
+  
+  left_join(.,ri_sites, by=c("WW.ID"="WW_Station")) %>%
+  
+  ungroup() %>%
+  
+  summarise(
+    stn_id=WW.ID,
+    location=Site_DESCR,
+    town=Town,
+    TEMP=env_00011,
+    DO=env_00300,
+    PH=env_00400,
+    SAL=env_00480,
+    depth=NA,
+    lat=LAT_DD,
+    long=LON_DD,
+    coalition="ridoh",
+    time_stamp=date)
+
+write.table(x=ridoh_curated,file="ridoh.tsv",sep="\t",quote=FALSE,row.names=FALSE,col.names=TRUE)
+
+
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Combined DataFrame
@@ -138,7 +212,7 @@ write.table(x=ches_curated, file="eyesonthebay.tsv",sep="\t",row.names = FALSE,c
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-EnvData <- rbind(combine_cur_WQP,ches_curated,buz_curated)
+EnvData <- rbind(combine_cur_WQP,ches_curated,buz_curated,ridoh_curated)
 
 write.table(x = EnvData, file="NSF_EnvironmentalData.tsv",quote = FALSE,sep = "\t",row.names = FALSE,col.names = TRUE)
 

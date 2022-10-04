@@ -24,6 +24,7 @@ library(readxl)
 library(leaflet)
 library(viridis)
 library(readxl)
+library(lubridate)
 source("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/scripts/bin/Rfunctions.R")
 
 #knit_hooks$set(plot=function(x, options) {
@@ -91,7 +92,7 @@ leaflet(width="100%") %>% addTiles() %>%
               "<br>Deployment: ", begin_date,"to", end_date,
               "<br>observations: ", n),
              clusterOptions = markerClusterOptions(), group = "WQP") %>%
-  # buzzards
+  # Buzzards
   addMarkers(data = env %>% filter(coalition=="buzzards"), lng = ~long, lat = ~lat,
              popup=~paste(
                "<br>Site Code: ", stn_id,
@@ -115,6 +116,19 @@ leaflet(width="100%") %>% addTiles() %>%
                "<br>Deployment: ", begin_date," to ", end_date,
                "<br>observations: ", n),
              clusterOptions = markerClusterOptions(), group = "Eyes On the Bay") %>%
+  # Rhode Island DOH
+  addMarkers(data = env %>% filter(coalition=="RIDOH"), lng = ~long, lat = ~lat,
+             popup=~paste(
+               "<br>Site Code: ", stn_id,
+               "<br>Location: ", location,
+               "<br>Mean Temperature: ",avg_temp,
+               "<br>Mean Salinity: ", avg_sal,
+               "<br>Mean DO: ", avg_do,
+               "<br>Mean pH: ", avg_ph,
+               "<br>Deployment: ", begin_date," to ", end_date,
+               "<br>observations: ", n),
+             clusterOptions = markerClusterOptions(), group = "RI DOH") %>%
+  # WasteWater
   addMarkers(data=waste,lng=~LONGITUDE,lat=~LATITUDE,
              popup=~paste(
                "<br>PGM System ID: ", PGM_SYS_ID,
@@ -122,7 +136,7 @@ leaflet(width="100%") %>% addTiles() %>%
                "<br>Address: ", LOCATION_ADDRESS,
                "<br>More Information: <a href = ",FACILITY_URL,"> Link </a>"),
              clusterOptions = markerClusterOptions(), group = "Water Discharge Facilities") %>% 
-  addLayersControl(overlayGroups = c("WQP","Buzzards Bay Coalition","Eyes On the Bay","Water Discharge Facilities"),
+  addLayersControl(overlayGroups = c("WQP","Buzzards Bay Coalition","Eyes On the Bay","RI DOH","Water Discharge Facilities"),
                    options= layersControlOptions(collapsed = FALSE)) %>% hideGroup("Water Discharge Facilities")
 
 ```
@@ -312,7 +326,7 @@ curated_fairfield <- fairfield %>%
 ```
 
 ```{r fairfield WQP Query df, echo = FALSE, eval = TRUE, messages=FALSE,warning=FALSE}
-head(fairfield) %>% kbl(caption = "Keep Your Eyes On the Bay") %>% kable_classic(full_width=F)
+head(fairfield) %>% kbl(caption = "Water Quality Portal Fairfield County, CT") %>% kable_classic(full_width=F)
 ```
 
 ```{r fairfield WQP time series, echo=FALSE, eval = TRUE, message=FALSE, warning=FALSE, fig.width=25, fig.height=10, fig.cap="**Fig.2** Dissolved oxygen in mg/L across across 4 sites",alt.text="capturing 4 sites with highest observation counts and DO taken as average across overlapping sites",fig.align='center'}
@@ -323,9 +337,76 @@ sub_fairfield <- curated_fairfield %>% filter(stn_id %in% fairfieldsites)
 EnvTimeSeriesPoints(data = sub_fairfield, x = time_stamp, y = DO, color = location)
 ```
 
+# RIDOH
+obtained dataset via emailing eherron@uri.edu. Values were obtained by taking the average across sampling depths and sampling times per day. 
+
+```{r rhode island DOH, echo = TRUE, eval = TRUE, messages=FALSE,warning=FALSE}
+ri_parametercodes <- read_xlsx("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/RIDOH_Supporting_Files.xlsx",sheet=2) %>% 
+  mutate(ParameterName = gsub("\\ -.*","",ParameterName)) 
+
+ri_sites <- read_xlsx("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/RIDOH_Supporting_Files.xlsx",sheet=5)
+
+ridoh <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/RIDOH_1988_2020.csv",sep = ',') %>% # description - code; removing description
+  
+  mutate(parameter_code = gsub(".* - ","",Parameter..),
+         date = mdy(Date.of.Sample),
+         time = hms(Time), # Some strings are missing time, only evaluated based date and avg across time for a given day
+         # time_stamp = mdy_hms(paste0(Date.of.Sample," ",Time)),
+         measured_value = as.numeric(Concentration),
+         id = row_number()) %>% 
+  
+  filter(parameter_code %in% c("00300","00400","00480","00011"), # dissolved oxygen = 00300, pH = 00400, salinity = 00480, temperature = 00011
+         !(Qualifier.Code %in% c("N","U","I","V")))
+
+ridoh_curated <- ridoh %>%
+  
+  group_by(date, WW.ID, parameter_code) %>% # pooled different depths and samples from the same day
+  
+  summarise(avg_measuredvalue = mean(Concentration,na.rm=TRUE)) %>% # Took the average across these avg. depths and samples taken that day
+  
+  pivot_wider(names_from=parameter_code, values_from = avg_measuredvalue, names_prefix = "env_") %>% 
+  
+  left_join(.,ri_sites, by=c("WW.ID"="WW_Station")) %>%
+  
+  ungroup() %>%
+  
+  summarise(
+    stn_id=WW.ID,
+    location=Site_DESCR,
+    town=Town,
+    TEMP=env_00011,
+    DO=env_00300,
+    PH=env_00400,
+    SAL=env_00480,
+    depth=NA,
+    lat=LAT_DD,
+    long=LON_DD,
+    coalition="ridoh",
+    time_stamp=date)
+```
+
+
+```{r ridoh df, echo = FALSE, eval = TRUE, messages=FALSE,warning=FALSE}
+head(ridoh) %>% kbl(caption = "Rhode Island Department of Health (DOH)") %>% kable_classic(full_width=F)
+```
+
+Values Were exclude based on being tagged for the below qualifier codes. If a record is absent from a qualifier code that it was assumed to be reflect accurate reading. 
+
+```{r rhode island doh qualifier codes, echo = TRUE, eval = TRUE, messages=FALSE,warning=FALSE}
+qualifier_codes <- data.frame(
+  "Qualifier Code" = c("N","U","I","V","Z"),
+  "Description" = c("No Results (see comments)","Indicates that the compound was analyzed but not detected. This code
+shall be used to indicate that the lab value reported is less than the Method Detection Limit and is reported for informational purposes.","Value reported is equal to or greater than the Method Detection Limit but less
+than the Quantitation Level (Reporting Level). Data shall be deemed invalid.","Analyte was detected in both the sample and the associated method blank.","Actual value is greater than the value reported. For bacteria analyses: Too many colonies were present (too numerous to count TNTC - membrane filtration) or all wells positive (IDEXX). Other analyses - off scale."), 
+"include_exclude" = c("exclude","exclude","exclude","exclude","include"))
+
+qualifier_codes %>% kbl(caption = "A Tale of Exclusion") %>% kable_classic(full_width=F)
+```
 # Water Treatment Facilities
 
 obtained from epa [data portal](https://edg.epa.gov/metadata/catalog/search/resource/details.page?uuid=%7BD7F5EE9A-248F-43FA-85F4-CCFC1181BF25%7D). Points of National Pollutant Discharge Elimination System (NPDES) and Permit Compliance Systems (PCS) programs as reported in Integrated Compliance Information Systems (ICIS). This dataset is updated weekly. 
+
+included only public facilities
 
 ```{r Water Treatment Facilities, echo = FALSE, eval = TRUE, messages=FALSE,warning=FALSE}
 head(waste) %>% kbl(caption = "Wastewater Discharge Facilities & Sewers & Water Quality Control Facilties") %>% kable_classic(full_width=F)
