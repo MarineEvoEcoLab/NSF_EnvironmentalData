@@ -70,14 +70,24 @@ env <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/NSF_Environmenta
     lat=as.numeric(lat),
     long=as.numeric(long),
     coalition,
-    begin_date=min(as.POSIXct(time_stamp, format='%Y-%m-%d %H:%M:%S')),
-    end_date=max(as.POSIXct(time_stamp, format='%Y-%m-%d %H:%M:%S')),
+    begin_date=min(as.POSIXct(date, format='%Y-%m-%d')),
+    end_date=max(as.POSIXct(date, format='%Y-%m-%d')),
     n=n()
     ) %>%
   distinct(stn_id,.keep_all = TRUE) %>% filter(n > 1)
 
 
 waste <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/wastewater_discarge_permits.tsv",sep="\t")
+
+markers <- ~paste(
+               "<br>Site Code: ", stn_id,
+               "<br>Location: ", location,
+               "<br>Mean Temperature: ",avg_temp,
+               "<br>Mean Salinity: ", avg_sal,
+               "<br>Mean DO: ", avg_do,
+               "<br>Mean pH: ", avg_ph,
+               "<br>Deployment: ", begin_date," to ", end_date,
+               "<br>observations: ", n)
 
 leaflet(width="100%") %>% addTiles() %>% 
   # USGS
@@ -117,7 +127,7 @@ leaflet(width="100%") %>% addTiles() %>%
                "<br>observations: ", n),
              clusterOptions = markerClusterOptions(), group = "Eyes On the Bay") %>%
   # Rhode Island DOH
-  addMarkers(data = env %>% filter(coalition=="RIDOH"), lng = ~long, lat = ~lat,
+  addMarkers(data = env %>% filter(coalition=="ridoh"), lng = ~long, lat = ~lat,
              popup=~paste(
                "<br>Site Code: ", stn_id,
                "<br>Location: ", location,
@@ -273,7 +283,7 @@ Search was narrowed based on state, county, site type == "estuary", sample media
 
 variables <- c("Dissolved oxygen (DO)", "Oxygen", "Temperature, water", 'Salinity', "pH") # Measurments We Want
 
-fairfield <- read.csv("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/WQP_CT_fairfield.csv",na.strings=c("","NA")) %>% 
+fairfield <- read.csv("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/WQP_CT_middlesex.csv",na.strings=c("","NA")) %>% 
   filter(CharacteristicName %in% variables) %>% 
   mutate(time_stamp=as.POSIXct(ActivityStartDate,format="%Y-%M-%d"))
 
