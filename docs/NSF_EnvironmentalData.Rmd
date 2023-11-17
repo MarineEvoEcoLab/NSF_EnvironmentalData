@@ -57,7 +57,7 @@ leaflet interactive map
 
 ```{r leaflet, echo=FALSE,eval=TRUE,warning=FALSE, fig.cap="Fig. 1 leaflet map showing site positions with popups containing site metadata"}
 
-env <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/NSF_EnvironmentalData.tsv",sep="\t") %>% 
+env1 <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/NSF_EnvironmentalData_v2.tsv",sep="\t") %>% 
   group_by(stn_id) %>%
   dplyr::summarise(
     stn_id=stn_id,
@@ -76,8 +76,12 @@ env <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/NSF_Environmenta
     ) %>%
   distinct(stn_id,.keep_all = TRUE) %>% filter(n > 1)
 
-
 waste <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/wastewater_discarge_permits.tsv",sep="\t")
+
+amy_data <- read.delim("D:/Puritz_Lab/NSF/NSF_EnvironmentalData/data/NSF_RISG_Sample_Site_Coordinates-1700077059503.txt", sep='\t', header=F, col.names = colnames(env1)) %>% mutate(begin_date = as.POSIXct(begin_date, format='%Y-%m-%d'),
+                                                 end_data = as.POSIXct(end_date, format='%Y-%m-%d'))
+
+env <- rbind(env1, amy_data)
 
 markers <- ~paste(
                "<br>Site Code: ", stn_id,
@@ -138,6 +142,18 @@ leaflet(width="100%") %>% addTiles() %>%
                "<br>Deployment: ", begin_date," to ", end_date,
                "<br>observations: ", n),
              clusterOptions = markerClusterOptions(), group = "RI DOH") %>%
+  # Rhode Island Amy
+  addMarkers(data = env %>% filter(coalition=="Amy"), lng = ~long, lat = ~lat,
+             popup=~paste(
+               "<br>Site Code: ", stn_id,
+               "<br>Location: ", location,
+               "<br>Mean Temperature: ",avg_temp,
+               "<br>Mean Salinity: ", avg_sal,
+               "<br>Mean DO: ", avg_do,
+               "<br>Mean pH: ", avg_ph,
+               "<br>Deployment: ", begin_date," to ", end_date,
+               "<br>observations: ", n),
+             clusterOptions = markerClusterOptions(), group = "RI Amy") %>%
   # WasteWater
   addMarkers(data=waste,lng=~LONGITUDE,lat=~LATITUDE,
              popup=~paste(
@@ -146,7 +162,7 @@ leaflet(width="100%") %>% addTiles() %>%
                "<br>Address: ", LOCATION_ADDRESS,
                "<br>More Information: <a href = ",FACILITY_URL,"> Link </a>"),
              clusterOptions = markerClusterOptions(), group = "Water Discharge Facilities") %>% 
-  addLayersControl(overlayGroups = c("WQP","Buzzards Bay Coalition","Eyes On the Bay","RI DOH","Water Discharge Facilities"),
+  addLayersControl(overlayGroups = c("WQP","Buzzards Bay Coalition","Eyes On the Bay","RI DOH","Water Discharge Facilities", "RI Amy"),
                    options= layersControlOptions(collapsed = FALSE)) %>% hideGroup("Water Discharge Facilities")
 
 ```
